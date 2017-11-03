@@ -7,28 +7,35 @@ import numpy as np
 # Richard Higgins
 # relh
 
+tags = {} 
+trans = {}
+words = {}
+trans_probs = {}
+tags_probs = {}
+
 class Conditional(object):
   def __init__(self):
     self.counts = {}
     self.probs = {}
 
   def count_put(self, cls, item): # tag tran
-    self.insert(cls, item)
+    self.counts = self.insert(self.counts, cls, item)
 
-  def insert(self, cls, item):
-    if cls in self.counts:
-      if item in self.counts[cls]:  
-        self.counts[cls][item] += 1
+  def insert(self, dic, cls, item):
+    if cls in dic:
+      if item in dic[cls]:  
+        dic[cls][item] += 1
       else:
-        self.counts[cls][item] = 1
+        dic[cls][item] = 1
     else:
-      self.counts[cls] = {item: 1}
+      dic[cls] = {item: 1}
+    return dic
 
   def add_one(self, cls):
       # Add-one smoothing
       N = {}
       total = 0
-      for count in range(0, max(self.counts[cls].values())+1):
+      for count in range(0, max(self.counts[cls].values())):
         N[count] = 1 
       for count in self.counts[cls].values():
         total += count 
@@ -53,14 +60,39 @@ class Conditional(object):
       for idx in r_star:
         self.probs[cls][idx] = r_star[idx] / total # / sum(N.values())
 
+def calc_trans_probs():
+  for tag in trans:
+    trans_probs[tag] = {}
+    N = {}
+    total = 0
+    # Add-one smoothing
+    for value in range(0, max(trans[tag].values())+1):
+      N[value] = 1 
+    for value in trans[tag].values():
+      total += value
+      N[value] += 1
+    
+    r_star = {}
+    if 1 in N:
+      r_star[0] = N[1]
+    for num, count in N.items():
+      if num+1 in N and num <= 5: # set k > 5 -> basic approximation
+        r_star[num] = (num+1) * (N[num+1] / N[num])
+      else:
+        r_star[num] = num 
+
+    for idx in r_star:
+      trans_probs[tag][idx] = r_star[idx] / total # / sum(N.values())
+
+
 def build(f_h):
+  units = []
   for line in f_h:
     line = line.lower()
-    final_words = []
-    final_pos = []
-    units = line.split(' ')
+    final_units = []
+    units.append(line.split(' '))
     first = 1
-    for chunk in units:
+    for chunk in units[-1]:
       # Skip end of sentences
       if not '\n' in chunk:
         # Check for real \ case 
@@ -74,10 +106,9 @@ def build(f_h):
           elif '-' in chunk:
             part1, part2 = chunk.split('-')
           word, pos = part1.split('/')
-          final_words.append(word)
-          final_pos.append(pos)
-          tags.insert(pos, word)
-          trans.insert(old_pos, pos)
+          final_units.append(word)
+          tag(pos, word)
+          tran(old_pos, pos)
           old_pos = pos
           word, pos = part2.split('/')
         # Check for lots of /'s
@@ -86,105 +117,35 @@ def build(f_h):
         else:
           word, pos = chunk.split('/')
         # Collect words
-        final_words.append(word)
-        final_pos.append(pos)
-        words[line] = final_words
-        poses[line] = final_pos
+        final_units.append(word)
+        words[line] = final_units
         # Collect pos
-        tags.insert(pos, word)
+        tag(pos, word)
         if first == 1:
           # Start of sentence
-          trans.insert('start', pos)     
+          tran('start', pos)     
           first = 0        
         else:
-          trans.insert(old_pos, pos)
+          tran(old_pos, pos)
         old_pos = pos
 
-  tags.calc_probs()
-  trans.calc_probs()
+  calc_trans_probs()
+  calc_tags_probs()
+  return tags, words
 
-tags = Conditional() 
-trans = Conditional() 
-words = {}
-poses = {}
+def get_tag_sum():
+  pass
 
 #Let T = # of part-of-speech tags
 #Build words too
-#with open('POS.test') as test:
-#  build(test)
+with open('POS.test') as test:
+  build(test)
 
 with open('POS.train') as train:
   build(train)
 
-# Base prediction model
-#print trans.counts.values()
-#print tags.counts.values()
-
-def assess(model, path='POS.train'):
-  correct = 0
-  total = 0
-  with open(path) as fh:
-    for line in fh:
-      line = line.lower()
-      parse_words = words[line]
-      parse_poses = poses[line]
-
-      seq = []
-      for word in parse_words:
-        seq.append(model.predict(word))
-
-      for i, v in enumerate(seq):
-        if v == parse_poses[i]:
-          correct += 1
-        total += 1
-
-  return correct / total
-
-class Model(object):
-  def __init__(self):
-    pass
-
-  def predict(self, word):
-    pass
-
-class Baseline(Model):
-  def __init__(self):
-    pass
-
-  def predict(self, word):
-    max_tag = 0
-    max_counts = 0
-    total = 0
-    for tag in tags.counts:
-      if word in tags.counts[tag]:
-        total += tags.counts[tag][word]
-        if tags.counts[tag][word] > max_counts:
-           max_counts = tags.counts[tag][word]
-           max_tag = tag
-    #print max_counts/total
-    return max_tag
-
-class Viterbi(Model):
-  def __init__(self):
-    pass
-
-  def predict(self, word):
-    max_tag = 0
-    max_counts = 0
-    total = 0
-    for tag in tags.counts:
-      if word in tags.counts[tag]:
-        total += tags.counts[tag][word]
-        if tags.counts[tag][word] > max_counts:
-           max_counts = tags.counts[tag][word]
-           max_tag = tag
-    #print max_counts/total
-    return max_tag
-
-baseline_score = assess(Baseline())
-print baseline_score
-viterbi_score = assess(Viterbi())
-print viterbi_score 
+#print words
+#print tags
 
 # Here we iterate on a sentence by sentence basis
 with open('POS.train') as train:
