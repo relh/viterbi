@@ -87,6 +87,11 @@ with open('POS.train') as train:
 #print words
 #print tags
 
+def prob(d, one, two):
+  prb = d[one+two]/sum([d[one+b] for b in tags if one+b in d]) if one+two in d else 0.0
+  #print prb
+  return prb
+
 # Here we iterate on a sentence by sentence basis
 with open('POS.train') as train:
   for line in train:
@@ -104,48 +109,45 @@ with open('POS.train') as train:
       print t
       score[t] = []
       backptr[t] = []
-      #Score(t, 1) = Pr(W1| Tt) * Pr(Tt| φ)
-      """
-      print "----"
-      print t
-      print tags[t][sentence[0]]
-      print sum(tags[t].values())
-      print tags[t][sentence[0]]/sum(tags[t].values())
-      print tags['start'][t]/sum(tags['start'].values())
-      """
+      #Score(t, 1) = Pr(W1| Tt) * Pr(Tt| φ) # Pr(t | start)
       pr_w_t = tags[t][sentence[0]]/sum(tags[t].values()) if sentence[0] in tags[t] else 0.0
-      pr_t_s = trans['start'+t]/sum([trans['start'+ti] for ti in tags if 'start'+ti in trans]) if 'start'+t in trans else 0.0
-      print pr_w_t
-      print pr_t_s
+      pr_t_s = prob(trans, 'start', t) 
       score[t].append(pr_w_t * pr_t_s)
 
       #BackPtr(t, 1) = 0;
-      backptr[t].append(0.0)
+      backptr[t].append(0)
 
     #/* Iteration Step */
     #for w = 2 to W
     for w in sentence[1:]:
       #for t = 1 to T
       for t in tags:
-        #Score(t, w) = Pr(Ww| Tt) *MAXj=1,T(Score(j, w-1) * Pr(Tt| Tj))
+        #Score(t, w) = Pr(Ww| Tt) *MAXj=1,T(Score(j, w-1) * Pr(Tt| Tj)) # Pr(t | ti)
         pr_w_t = tags[t][w]/sum(tags[t].values()) if w in tags[t] else 0.0
         max_index = 0
-        max_key = 0
+        max_key = ''
         max_score = 0
         for i, ti in enumerate(tags):
-          next_score = score[ti][-1] * trans[max_key+t]/sum([trans[max_key+ti] for ti in tags if max_key+ti in trans]) if max_key+t in trans else 0.0 > max_score
+          next_score = score[ti][-1] * prob(trans, ti, t)
+          print "GREAT SCOT"
+          print (trans[ti+t]/sum([trans[tj+t] for tj in tags if tj+t in trans]) if ti+t in trans else 0.0)
+          print prob(trans, ti, t)
+
           if next_score > max_score:
+            print 'holla'
             max_index = i
             max_key = ti
             max_score = next_score
       
-        max_index, max_key = max(enumerate(tags.keys()), key=lambda p: score[p[1]][-1]) # Need Prob transitions between tags
-        max_score = score[max_key][-1]
-        pr_t_ti = trans[max_key+t]/sum([trans[max_key+ti] for ti in tags if max_key+ti in trans]) if max_key+t in trans else 0.0
+        print max_key
+        pr_t_ti = trans[max_key+t]/sum([trans[max_key+tj] for tj in tags if max_key+tj in trans]) if max_key+t in trans else 0.0
 
         score[t].append(pr_w_t * pr_t_ti)
         #BackPtr(t, w) = index of j that gave the max above
         backptr[t].append(max_index) 
+
+    while True:
+      pass
 
     #/* Sequence Identification */
     #Seq(W ) = t that maximizes Score(t,W )
