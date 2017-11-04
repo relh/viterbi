@@ -276,19 +276,50 @@ class Viterbi(Model):
       break
     '''
   def predict(self, line):
+      self.backptr = {}
       seq = []
-      for i, word in enumerate(line):
-        pos = seq[-1] if len(seq) > 0 else 'start'
-        seq.append(self.predict_word(word, pos))
+      layer = self.predict_word(line[0], 'start')
+      for idx, word in enumerate(line[1:]):
+        #use layer for this
+        layer = self.predict_layer(word, layer, idx+1)
+        #pos = seq[-1] if len(seq) > 0 else 'start'
+        #seq.append(self.predict_word(word, pos))
+      
+      seq.insert(0, max(layer, key=layer.get))
+      for i in reversed(range(1, len(line))):
+        seq.insert(0, self.backptr[seq[0]][i])
       return seq
-      #print "TESTING " + parse_poses[i]
-      #while True:
-      #  pass
+
+  def predict_layer(self, word, layer, idx):
+    new_layer = {}
+    for t in tags.counts.keys():
+      #Score(t, w) = Pr(Ww| Tt) *MAXj=1,T(Score(j, w-1) * Pr(Tt| Tj))
+      w_count = tags.counts[t][word] if word in tags.counts[t] else 0
+      pr_w_t = tags.probs[t][w_count]
+
+      max_score = 0
+      max_pos = None
+      for sub_t, val in layer.items():
+        t_count = trans.counts[sub_t][t] if t in trans.counts[sub_t] else 0
+        pr_t_sub_t = trans.probs[sub_t][t_count] 
+        #w_count = tags.counts[sub_t][word] if word in tags.counts[sub_t] else 0
+        #pr_w_sub_t = tags.probs[sub_t][w_count]
+        if val * pr_t_sub_t > max_score:
+          max_score = val * pr_t_sub_t
+          max_pos = sub_t
+      
+      new_layer[t] = pr_w_t * max_score
+        
+      #BackPtr(t, w) = index of j that gave the max above
+      self.backptr[t][idx] = max_pos
+
+    return new_layer 
 
   def predict_word(self, word, pos):
     #for t = 1 to T
-    max_score = 0
-    max_tag = None
+    layer = {}
+    #max_score = 0
+    #max_tag = None
     for t in tags.counts.keys():
       #Score(t, 1) = Pr(W1| Tt) * Pr(Tt| φ) # Pr(t | start)
       w_count = tags.counts[t][word] if word in tags.counts[t] else 0
@@ -296,12 +327,14 @@ class Viterbi(Model):
 
       pr_w_t = tags.probs[t][w_count]
       pr_t_s = trans.probs[pos][t_count] 
-      #print pr_w_t
-      #print pr_t_s
-      if (pr_w_t * pr_t_s) > max_score:
-        max_score = pr_w_t * pr_t_s
-        max_pos = t
-    return max_pos
+
+      #if (pr_w_t * pr_t_s) > max_score:
+      #  max_score = pr_w_t * pr_t_s
+      #  max_pos = t
+      layer[t] = pr_w_t * pr_t_s
+
+      self.backptr[t] = {'0': 0} # Initialize backptr
+    return layer 
 
 def assess(model, path='POS.train'):
   correct = 0
